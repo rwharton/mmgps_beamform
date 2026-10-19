@@ -11,6 +11,8 @@ from datetime import datetime
 import beam_extract as be
 import beam_combine as bc
 
+import beam_extract_old as obe
+
 ms = casatools.ms()
 msmd = casatools.msmetadata()
 qa = casatools.quanta()
@@ -189,10 +191,31 @@ def proc_split_ms(ms_list, spw_list, proc_kwargs):
     return
 
 
-def proc_one_ms(ms_list, spw_list):
+def proc_one_ms(ms_file, spw_list, proc_kwargs):
     """
     Process data with many spw in one ms
     """
+    mdats, tt, freqs, proc_times = \
+              obe.average_visibilities(ms_file, spws=spw_list, **proc_kwargs)
+
+    # Write freqs
+    outdir = proc_kwargs['outdir']
+    basename = proc_kwargs['basename']
+    np.save(f"{outdir}/{basename}_freqs.npy", freqs)
+    
+    # Combine time steps
+    obe.multibeam_step_combine(outdir, basename)
+
+    # Cleanup time arrays
+    tdir = f"{outdir}/times"
+    if not os.path.exists(tdir):
+        os.mkdir(tdir)
+    tglob = f"{outdir}/spw*_tt*step*npy"
+    tfiles = glob.glob(tglob)
+    for tfile in tfiles:
+        fname = tfile.split('/')[-1]
+        os.rename(tfile, f"{tdir}/{fname}")
+
     return
 
 
@@ -265,3 +288,9 @@ if __name__ == "__main__":
 
     if len(ms_files) > 1:
         proc_split_ms(ms_files, spw_list, proc_kwargs)
+
+    elif len(ms_files) == 1:
+        proc_one_ms(ms_files[0], spw_list, proc_kwargs)
+
+    else:
+        print("No ms files provided!")

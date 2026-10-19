@@ -12,6 +12,8 @@ import sys
 from matplotlib.ticker import AutoMinorLocator, MultipleLocator
 import json
 from argparse import ArgumentParser
+import multiprocessing
+from contextlib import closing
 
 def blist_to_ccs(blist_file):
     """
@@ -263,6 +265,60 @@ def run_rmclean1d(infile, niter, threshold):
     return ret.returncode 
 
 
+def one_rm_clean(npy_file, freq_file, mask_file=None, outdir='.', 
+                 niter=200, threshold=-2, phimax=None):
+    """
+    Run full RM processing on one npy beam file
+    """
+    fname = npy_file.split('/')[-1]
+    basenm = fname.split('.npy')[0]
+    
+    # directory where clean data will go
+    bdir = f"{outdir}/{basenm}"
+    if not os.path.exists(bdir):
+        os.mkdir(bdir)
+    else:
+        print(f"{bdir} already exists!  skipping")
+        return
+
+    # read in npy data and write to text 
+    # file for rm synthesis and clean
+    freqs = np.load(freq_file)
+    darr = get_bdat(npy_file)   
+    print(darr.shape)
+    if mask_file is not None:
+        mask = np.load(mask_file)
+        xx = np.where( mask )[0]
+    else:
+        xx = np.arange(len(freqs))
+    dat_file = f"{bdir}/{basenm}.txt"
+    darr_to_txt(dat_file, darr[xx], freqs[xx])
+
+    # run rm synthesis
+    ret1 = run_rmsynth1d(dat_file, phimax=phimax)
+    
+    # run rm clean
+    ret2 = run_rmclean1d(dat_file, niter, threshold)
+
+    return
+
+
+def multi_rm_clean(nproc, npy_files, freq_file, mask_file=None, 
+                   outdir='.', niter=200, threshold=-2, phimax=None):
+    """
+    Given a list of npy data files, run rm clean on 
+    all with multiprocessing using nproc cores, 
+     and output to individual directories
+    """
+    with closing(multiprocessing.Pool(processes=nproc)) as pool:
+        results = [pool.apply_async(one_rm_clean,
+                   args=(npy_file, freq_file, mask_file, outdir, 
+                         niter, threshold, phimax) )\
+                         for npy_file in npy_files]
+        all_beams = [p.get() for p in results]
+    return
+
+
 def rm_clean_many(npy_files, freq_file, mask_file=None, outdir='.', 
                   niter=200, threshold=-2, phimax=None):
     """
@@ -428,7 +484,7 @@ def make_rm_plots(bnums, bdir, xlim=(-1e4, 1e4)):
     return
 
 
-def json_to_cat(bnum, json_file):
+def json_to_cat(bnum, json_file, use_obs=False):
     """
     read in json file results for clean, and convert 
     to a string to be print in catalog
@@ -436,17 +492,23 @@ def json_to_cat(bnum, json_file):
     with open(json_file, "r") as fin:
         dd = json.load(fin)
 
+    # Get Values
     rm = dd['phiPeakPIfit_rm2']
-    rm_err = dd['dPhiPeakPIfit_rm2']
-
-    # Convert to mJy
-    PI = dd['ampPeakPIfit'] * 1e3
-    PI_err = dd['dAmpPeakPIfit'] * 1e3
-
-    PI_snr = dd['snrPIfit']
-
+    PI = dd['ampPeakPIfit'] * 1e3  # mJy
     PA0 = dd['polAngle0Fit_deg']
-    PA0_err = dd['dPolAngle0Fit_deg']
+   
+    # Get errs 
+    if use_obs: 
+        rm_err = dd['dPhiObserved_rm2']
+        PI_err = dd['dAmpObserved'] * 1e3
+        PA0_err = dd['dPolAngleFit0Observed_deg']
+    else:
+        rm_err = dd['dPhiPeakPIfit_rm2']
+        PI_err = dd['dAmpPeakPIfit'] * 1e3
+        PA0_err = dd['dPolAngle0Fit_deg']
+    
+    #PI_snr = dd['snrPIfit']
+    PI_snr = PI / PI_err
 
     ostr = f"{bnum:03d}   {rm:10.2f}  {rm_err:10.2f}  " +\
            f"{PI:8.3f}  {PI_err:8.3f}  {PI_snr:7.1f}  "+\
@@ -482,7 +544,7 @@ def json_to_cat_coord(bnum, json_file, ra, dec):
     return ostr
     
 
-def make_catalog(bdir, outfile):
+def make_catalog(bdir, outfile, use_obs=False):
     """
     Parse all the RMclean json files for every beam
     and write values of interest to the catalog
@@ -504,7 +566,7 @@ def make_catalog(bdir, outfile):
     olines = []
     for ii, bdir in enumerate(blist):
         jfile = f"{bdir}/{bnames[ii]}_RMclean.json"
-        ostr = json_to_cat(bnums[ii], jfile)
+        ostr = json_to_cat(bnums[ii], jfile, use_obs=use_obs)
         olines.append(ostr)
 
     # Write catalog 
@@ -756,6 +818,11 @@ def parse_input():
     parser.add_argument('--cat',
                         help='Base name of catalog file (def: none, dont make catalog)',
                         required=False)
+    parser.add_argument('--use_obs_errs', help='Use obs errors from RM-tools in catalog (default = False)', 
+                        action='store_true')
+    parser.add_argument('--nproc', type=int,
+                        help='Number of parallel processes to run (def=1)',
+                        default=1, required=False)
     parser.add_argument('dat_files', nargs='+',
                         help='Beam data file(s) for RM CLEAN-ing')
 
@@ -795,10 +862,11 @@ if __name__ == "__main__":
     threshold = args.threshold
     dat_files = args.dat_files
     
-    rm_clean_many(dat_files, freqfile, mask_file=maskfile, 
-                  outdir=outdir, niter=niter, threshold=threshold, 
-                  phimax=phimax)
+    nproc = args.nproc
+    multi_rm_clean(nproc, dat_files, freqfile, mask_file=maskfile, 
+                   outdir=outdir, niter=niter, threshold=threshold, 
+                   phimax=phimax)
 
     if catbase is not None: 
         catfile = f"{outdir}/{catbase}.txt"
-        make_catalog(outdir, catfile)
+        make_catalog(outdir, catfile, use_obs=args.use_obs_errs)

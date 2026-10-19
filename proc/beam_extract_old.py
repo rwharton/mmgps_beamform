@@ -4,8 +4,6 @@
 ###  behavior.  Fix this soon !!!         ###
 #############################################
 
-
-
 import numpy as np
 import multiprocessing
 import casatools
@@ -101,19 +99,22 @@ def check_make_dir(dirname):
     return
 
 
-def save_beam_files(basename, write_step_num, tt, mdats_all, bnums):
-    print("    Writing Step %d" %write_step_num)
+
+def save_beam_files(basename, write_step_num, tt, mdats_all, bnums, outdir='.'):
+    print(f"    Writing Step {write_step_num}")
     sys.stdout.flush()
 
-    tt_file = "%s_tt_step%03d.npy" %(basename, write_step_num)
+    tt_file = f"{outdir}/{basename}_tt_step{write_step_num:03d}.npy"
+
     np.save(tt_file, tt)
     for ii, mdat in enumerate(mdats_all):
-        bdir = "beam%05d" %(bnums[ii])
+        bdir = f"{outdir}/beam{bnums[ii]:05d}"
         check_make_dir(bdir)
-        beam_file = "%s_beam%05d_step%03d.npy" %(basename, bnums[ii], write_step_num)
-        beam_path = "%s/%s" %(bdir, beam_file)
+        beam_file = f"{basename}_beam{bnums[ii]:05d}_step{write_step_num:03d}.npy"
+        beam_path = f"{bdir}/{beam_file}"
         np.save(beam_path, mdat)
-    return        
+    return
+
 
 
 def divide_by_baselines(dd, flags_int, Nbl_min):
@@ -140,7 +141,8 @@ def divide_by_baselines(dd, flags_int, Nbl_min):
 def average_visibilities(infile, ell_ems=[], beam_nums=[], spws=[0], tstep=1.0, nproc=4, 
                          write_tstep=0, basename="", target_id=2, phase_id=1, flux_id=0, 
                          Nbl_min=0, datacolumn='corrected', Nskip=0, use_flags=True, 
-                         use_weights=True, uv_lam_taper=0, uvlim=[1.0, 1e10], logfile=None):
+                         use_weights=True, uv_lam_taper=0, uvlim=[1.0, 1e10], 
+                         outdir='.', logfile=None):
     # Get channel frequencies using the ms metadata tool
     msmd.open(infile)
     freqs = np.array([])
@@ -165,10 +167,12 @@ def average_visibilities(infile, ell_ems=[], beam_nums=[], spws=[0], tstep=1.0, 
     Nchan = len(freqs)
     Nbeams = len(ell_ems)
     Nspw = len(all_spw)
+    Nchan_per_spw = Nchan//Nspw
 
     print(f"{Nchan=}")
     print(f"{Nbeams=}")
     print(f"{Nspw=}")
+    print(f"{Nchan_per_spw=}")
 
     # Open MS and average visibilities
     ms.open(infile)
@@ -233,11 +237,10 @@ def average_visibilities(infile, ell_ems=[], beam_nums=[], spws=[0], tstep=1.0, 
         rec = ms.getdataold(dcols, ifraxis=True)
         read_times.append(time.time() - read_time_start)
         
-        print(rec["u"].shape)
-        print(rec["time"].shape)
+        print("u: ", rec["u"].shape)
+        print("time: ", rec["time"].shape)  
 
         # Read in the times
-        #tt = np.reshape(rec["time"], (-1, Nspw))[:, 0]
         tt = np.reshape(rec["time"], (-1, Nspw))[:, 0]
         Nt = len(tt)   
 
@@ -250,6 +253,8 @@ def average_visibilities(infile, ell_ems=[], beam_nums=[], spws=[0], tstep=1.0, 
         ulams = np.multiply.outer(inv_waves_mat, np.reshape(rec["u"], (-1, Nt, Nspw))[:, :, 0])
         vlams = np.multiply.outer(inv_waves_mat, np.reshape(rec["v"], (-1, Nt, Nspw))[:, :, 0])
         wlams = np.multiply.outer(inv_waves_mat, np.reshape(rec["w"], (-1, Nt, Nspw))[:, :, 0])
+
+        print(wlams.shape)
 
         # Loop over spectral windows, apply flags, divide by baselines 
         ns_time_start = time.time()
@@ -276,7 +281,8 @@ def average_visibilities(infile, ell_ems=[], beam_nums=[], spws=[0], tstep=1.0, 
                 ww *= np.reshape(wts, (wts.shape[0], 1, wts.shape[1], wts.shape[2]))
 
             if uv_lam_taper > 0:
-                uv_dist_lams = np.sqrt( ulams**2 + vlams**2 )
+                yy = kk * Nchan_per_spw + np.arange(0, Nchan_per_spw)
+                uv_dist_lams = np.sqrt( ulams**2 + vlams**2 )[:, yy, :, :]
                 ww_taper = 1 - np.exp( -1 * uv_dist_lams**2 / (2 * uv_lam_taper**2) )
                 ww *= ww_taper
 
@@ -330,7 +336,8 @@ def average_visibilities(infile, ell_ems=[], beam_nums=[], spws=[0], tstep=1.0, 
         if write_tstep > 0:
             if jj == ((write_step_num + 1) * write_tstep - 1):
                 write_time_start = time.time()
-                save_beam_files(basename, write_step_num, tt_all, mdats_all, beam_nums)
+                save_beam_files(basename, write_step_num, tt_all, 
+                                mdats_all, beam_nums, outdir=outdir)
                 mdats_all = []
                 tt_all = np.array([])
                 write_times.append( time.time() - write_time_start )
@@ -346,7 +353,8 @@ def average_visibilities(infile, ell_ems=[], beam_nums=[], spws=[0], tstep=1.0, 
     # write that now.
     if len(mdats_all) and write_tstep > 0:
         write_time_start = time.time()
-        save_beam_files(basename, write_step_num, tt_all, mdats_all, beam_nums)
+        save_beam_files(basename, write_step_num, tt_all, mdats_all, 
+                        beam_nums, outdir=outdir)
         mdats_all = []
         tt_all = np.array([])
         write_times.append( time.time() - write_time_start )
@@ -595,3 +603,50 @@ def multibeam_combine(topdir, Nbeams, nspw):
     return
 
 
+def combine_steps(indir, bnum, basename):
+    """
+    Combine time steps for one beam and put it 
+    in the right order
+    """
+    # get npy files
+    glob_str = f"{indir}/{basename}_beam{bnum:05d}_step*.npy"
+    npy_step_list = glob.glob( glob_str )
+    npy_step_list.sort()
+
+    dd_list = []
+    for npy_file in npy_step_list:
+        dd_ii = np.load(npy_file)
+        dd_list.append( dd_ii )
+
+    if len(dd_list) > 1:
+        dd0 = np.vstack( [ddi[:, :, 0] for ddi in dd_list ] )
+        dd1 = np.vstack( [ddi[:, :, 1] for ddi in dd_list ] )
+        dd2 = np.vstack( [ddi[:, :, 2] for ddi in dd_list ] )
+        dd3 = np.vstack( [ddi[:, :, 3] for ddi in dd_list ] )
+
+    else:
+        dd0 = dd_list[0][:, :, 0]
+        dd1 = dd_list[0][:, :, 1]
+        dd2 = dd_list[0][:, :, 2]
+        dd3 = dd_list[0][:, :, 3]
+
+    dd_out = np.array([dd0, dd1, dd2, dd3])
+
+    outfile = "%s/beam%03d_full.npy" %(indir, bnum)
+    np.save(outfile, dd_out)
+
+    return
+
+
+def multibeam_step_combine(topdir, basename):
+    """
+    assume b00000 etc
+    """
+    glob_str = f"{topdir}/beam[0-9]*[0-9]"
+    bdirs = glob.glob(glob_str)
+    bnum_list = [ int(bb.rsplit('beam', 1)[-1]) for bb in bdirs ]
+    bnums = np.unique(bnum_list)
+    for bnum in bnums:
+        indir = f"{topdir}/beam{bnum:05d}"
+        combine_steps(indir, bnum, basename)
+    return
