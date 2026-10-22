@@ -15,25 +15,6 @@ from argparse import ArgumentParser
 import multiprocessing
 from contextlib import closing
 
-def blist_to_ccs(blist_file):
-    """
-    convert beam file to ccs
-    """
-    ras = []
-    decs = []
-    blist = np.load(blist_file)
-    for ii, col in enumerate(blist):
-        ra_str = col[1]
-        dec_str = col[2]
-        dec_str = ':'.join(dec_str.split('.', 2))
-        ras.append(ra_str)
-        decs.append(dec_str)
-
-    ccs = SkyCoord(ras, decs, unit=(u.hourangle, u.deg))
-
-    return ccs
-
-
 def running_median(dd, nwin=30):
     """
     Calculate running median with window size nwin bins 
@@ -285,7 +266,7 @@ def one_rm_clean(npy_file, freq_file, mask_file=None, outdir='.',
     # file for rm synthesis and clean
     freqs = np.load(freq_file)
     darr = get_bdat(npy_file)   
-    print(darr.shape)
+    #print(darr.shape)
     if mask_file is not None:
         mask = np.load(mask_file)
         xx = np.where( mask )[0]
@@ -484,6 +465,40 @@ def make_rm_plots(bnums, bdir, xlim=(-1e4, 1e4)):
     return
 
 
+def json_to_parr(bnum, json_file, use_obs=False):
+    """
+    read in json file results for clean, and return an 
+    array of the relevant parameters:
+
+    RM, E_RM, PI, E_PI, PA0, E_PA0, PI_snr
+
+    Fluxes are in Jy
+    """
+    with open(json_file, "r") as fin:
+        dd = json.load(fin)
+
+    # Get Values
+    rm = dd['phiPeakPIfit_rm2']
+    PI = dd['ampPeakPIfit'] 
+    PA0 = dd['polAngle0Fit_deg']
+   
+    # Get errs 
+    if use_obs: 
+        rm_err = dd['dPhiObserved_rm2']
+        PI_err = dd['dAmpObserved']
+        PA0_err = dd['dPolAngleFit0Observed_deg']
+    else:
+        rm_err = dd['dPhiPeakPIfit_rm2']
+        PI_err = dd['dAmpPeakPIfit'] 
+        PA0_err = dd['dPolAngle0Fit_deg']
+    
+    PI_snr = PI / PI_err
+
+    parr = np.array([ rm, rm_err, PI, PI_err, PA0, PA0_err, PI_snr ])
+
+    return parr
+
+
 def json_to_cat(bnum, json_file, use_obs=False):
     """
     read in json file results for clean, and convert 
@@ -636,6 +651,70 @@ def make_catalog2(srcfile, bdir, outfile):
     return
 
 
+
+def make_fits_catalog(catfile, bdir, use_obs=False):
+    """
+    Parse all the RMclean json files for every beam
+    and make a copy of the catfile, appending the 
+    parameters of interest to the source catalog FITS file
+    """
+    # Open catalog FITS file
+    tab = Table.read(catfile)
+    N = len(tab)
+
+    # RM units
+    uRM = u.rad / u.m**2 
+
+    # Prepare to add columns
+    col_names = ['RM', 'E_RM', 'PI', 'E_PI', 'PA0', 'E_PA0', 'PI_SNR']
+    col_units = [uRM ,  uRM  , u.Jy,  u.Jy,  u.deg, u.deg, 1 ]
+
+    nan_arr = np.array([np.nan] * len(tab))
+
+    # If column doesn't exist, add it with default values
+    # If it does exist, reset to default values 
+    for ii in range(len(col_names)):
+        cname = col_names[ii]
+        cunit = col_units[ii]
+        nval = np.nan * cunit
+
+        if cname in tab.colnames:
+            tab[cname] = nval
+        else:
+            tab.add_column(nval, name=cname)
+    
+    # Go through beams directory and get beam names and numbers
+    # The beam numbers correspond to the table row
+    blist = glob.glob(f"{bdir}/*beam[0-9]*")
+    blist.sort()
+    bnames = []
+    bnums = []
+    for bb in blist:
+        bname = bb.split('/')[-1]
+        p = re.search("beam([0-9]+)", bname)
+        if p is not None:
+            bnames.append(bname)
+            bnums.append( int(p.group(1)) )
+
+    # get cat lines
+    for ii, beam_dir in enumerate(blist):
+        jfile = f"{beam_dir}/{bnames[ii]}_RMclean.json"
+        bnum = bnums[ii]
+        parr = json_to_parr(bnum, jfile, use_obs=use_obs)
+
+        for jj, ck in enumerate(col_names):
+            pval = parr[jj] #* col_units[jj]
+            tab[bnum][ck] = pval
+
+    cat_fname = os.path.basename(catfile)
+    out_base = cat_fname.rsplit('.fits', 1)[0]
+    outfile = f"{bdir}/{out_base}_RM.fits" 
+    tab.write(outfile)
+
+    return
+
+
+
 def get_rm_idx(rm_txt, snr_min=-1):
     """
     Read rm cat and get rows meeting snr min criterion 
@@ -647,147 +726,8 @@ def get_rm_idx(rm_txt, snr_min=-1):
     snrs = rdat[:, 5]
     xx = np.where( snrs > snr_min )[0]
     return bnums[xx]
-    
 
 
-def plot_rms(infile, rm_txt, cc0, rm0=0, vmin=None, vmax=None, 
-             cattype='blist', snr_min=-1, frame='fk5', offset=True):
-    """
-    Make a plot using coords from cat_fits and 
-    rm values from rm_txt centered on cc0
-    """
-    if cattype == 'blist':
-        cc = blist_to_ccs(infile)
-    else:
-        tab = Table.read(infile)
-        cc = SkyCoord(tab["RA"], tab["DEC"])
-
-    rdat = np.loadtxt(rm_txt)
-    bnums = rdat[:, 0].astype('int')
-    rms = rdat[:, 1]
-    pflux = rdat[:, 3]
-    snrs = rdat[:, 5]
-    xx = np.where( snrs > snr_min )[0]
-
-    if offset:
-        if frame == 'fk5':
-            dra = (cc.fk5.ra - cc0.fk5.ra) * np.cos(cc0.fk5.dec)
-            ddec = (cc.fk5.dec - cc0.fk5.dec)
-
-            dx = dra.arcmin
-            dy = ddec.arcmin
-
-        else:
-            dlon = (cc.galactic.l - cc0.galactic.l) * np.cos(cc0.galactic.b)
-            dlat = (cc.galactic.b - cc0.galactic.b)
-        
-            dx = dlon.arcmin
-            dy = dlat.arcmin
-
-    else:
-        if frame == 'fk5':
-            dx = cc.fk5.ra
-            dy = cc.fk5.dec
-
-        else:
-            dx = cc.galactic.l.deg
-            dy = cc.galactic.b.deg
-
-            #yy = np.where( dx > 180 )[0]
-            #print(yy)
-            #if len(yy):
-            #    dx[yy] = dx[yy] - 360 
-            #    print(dx)
-        
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
-
-    ax.set_aspect('equal')
-    #ax.plot(dx, dy, marker='o', ls='')
-
-    print(np.mean(rms))
-    cax = ax.scatter(dx[xx], dy[xx], marker='o', c=rms[xx]-rm0, cmap='coolwarm', 
-                     s=3 * (snrs[xx]), edgecolor='k', lw=0.5,
-                     vmin=vmin, vmax=vmax)
-    cbar = plt.colorbar(cax, shrink=0.95, extend='both')
-    cbar.ax.set_ylabel('${\\rm RM}~({\\rm rad~m}^{-2})$', fontsize=12)
-
-    xlim = ax.get_xlim()
-    ax.set_xlim( xlim[1], xlim[0])
-   
-    if frame == 'fk5': 
-        if offset:
-            ax.set_xlabel("RA Offset (arcmin)", fontsize=14)
-            ax.set_ylabel("DEC Offset (arcmin)", fontsize=14)
-        else:
-            ax.set_xlabel("RA (deg)", fontsize=14)
-            ax.set_ylabel("DEC (deg)", fontsize=14)
-    else:
-        if offset:
-            ax.set_xlabel("Gal Lon Offset (arcmin)", fontsize=14)
-            ax.set_ylabel("Gal Lat Offset (arcmin)", fontsize=14)
-        else:
-            ax.set_xlabel("Gal Lon (deg)", fontsize=14)
-            ax.set_ylabel("Gal Lat (deg)", fontsize=14)
-
-    #ax.plot(0, 0, marker='x', c='r')
-
-    plt.show()
-    return
-    
-
-
-def plot_frac_pol(infile, rm_txt, cc0, vmin=None, vmax=None, 
-                  snr_min=-1, frame='fk5'):
-    """
-    Make a plot using coords from cat_fits and 
-    rm values from rm_txt centered on cc0
-    """
-    tab = Table.read(infile)
-    cc = SkyCoord(tab["RA"], tab["DEC"])
-    fluxes = tab['Total_flux'] * 1e3
-
-    rdat = np.loadtxt(rm_txt)
-    bnums = rdat[:, 0].astype('int')
-    rms = rdat[:, 1]
-    pflux = rdat[:, 3]
-    snrs = rdat[:, 5]
-    pfrac = pflux / fluxes
-    xx = np.where( snrs > snr_min )[0]
-
-    if frame == 'fk5':
-        dx = cc.fk5.ra.deg
-        dy = cc.fk5.dec.deg
-
-    else:
-        dx = cc.galactic.l.deg
-        dy = cc.galactic.b.deg
-
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
-
-    ax.set_aspect('equal')
-    #ax.plot(dx, dy, marker='o', ls='')
-
-    cax = ax.scatter(dx[xx], dy[xx], marker='o', c=pfrac[xx], cmap='inferno', 
-                     s=3 * (snrs[xx]), edgecolor='k', lw=0.5,  
-                     norm=matplotlib.colors.Normalize(vmin=vmin, vmax=vmax))
-    cbar = plt.colorbar(cax, shrink=0.95)
-    cbar.ax.set_ylabel('Lin Pol Frac', fontsize=12)
-
-    xlim = ax.get_xlim()
-    ax.set_xlim( xlim[1], xlim[0])
-   
-    if frame == 'fk5': 
-       ax.set_xlabel("RA (deg)", fontsize=14)
-       ax.set_ylabel("DEC (deg)", fontsize=14)
-    else:
-       ax.set_xlabel("Gal Lon (deg)", fontsize=14)
-       ax.set_ylabel("Gal Lat (deg)", fontsize=14)
-
-    #ax.plot(0, 0, marker='x', c='r')
-    plt.show()
-    return
 
 
 def parse_input():
@@ -815,9 +755,9 @@ def parse_input():
     parser.add_argument('--phimax', type=float,
                         help='Maximum Faraday depth (rad/^2, def: -1, no max)',
                         default=-1, required=False)
-    parser.add_argument('--cat',
-                        help='Base name of catalog file (def: none, dont make catalog)',
-                        required=False)
+    parser.add_argument('--catfile',
+                        help='FITS catalog file to add results to',
+                        required=True)
     parser.add_argument('--use_obs_errs', help='Use obs errors from RM-tools in catalog (default = False)', 
                         action='store_true')
     parser.add_argument('--nproc', type=int,
@@ -836,8 +776,6 @@ if __name__ == "__main__":
     # Parse command line input
     args = parse_input()
 
-    catbase = args.cat
-
     freqfile = args.freqfile
     if not os.path.exists(freqfile):
         print(f"Freq file not found: {freqfile}")
@@ -849,10 +787,10 @@ if __name__ == "__main__":
             print(f"Mask file not found: {maskfile}")
             sys.exit(0)
 
+    # Make output directory if needed
     outdir = args.outdir
     if not os.path.exists(outdir):
-        print(f"Outdir not found: {outdir}")
-        sys.exit(0)
+        os.makedirs(outdir)
 
     phimax = args.phimax
     if phimax <= 0:
@@ -867,6 +805,5 @@ if __name__ == "__main__":
                    outdir=outdir, niter=niter, threshold=threshold, 
                    phimax=phimax)
 
-    if catbase is not None: 
-        catfile = f"{outdir}/{catbase}.txt"
-        make_catalog(outdir, catfile, use_obs=args.use_obs_errs)
+    catfile = args.catfile
+    make_fits_catalog(catfile, outdir, use_obs=args.use_obs_errs)

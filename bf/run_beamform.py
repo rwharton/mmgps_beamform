@@ -7,9 +7,10 @@ import gc
 import casatools
 from argparse import ArgumentParser
 from datetime import datetime
+from astropy.table import Table
 
 import beam_extract as be
-import beam_combine as bc
+import beam_cats as bcats
 
 import beam_extract_old as obe
 
@@ -26,15 +27,32 @@ def parse_input():
     prog_desc = "Extract beamformed IQUV dynamic spectra from MS data"
     parser = ArgumentParser(description=prog_desc)
 
-    parser.add_argument('--beamfile', 
-                        help='Path to *npy beam positions file', 
+    # Catalog + Preliminary filtering
+    parser.add_argument('--catfile', 
+                        help='Path to input source catalog', 
                         required=True)
+    parser.add_argument('--cat_max_sep',
+                        help='Pre-filter: Max sep from phase center in arcmin' +\
+                             ' (default: -1, no limit)',
+                        required=False, type=float, default=-1.0)
+    parser.add_argument('--cat_isl_filter',
+                        help='Pre-filter: Only keep one source per island (def: do NOT filter)',
+                        required=False, action='store_true')
+
+    # Output 
     parser.add_argument('--outbase', 
                         help='Base name for output files', 
                         required=True)
     parser.add_argument('--outdir', 
                         help='Output directory for beam data (def: cwd)', 
                         required=False, default='.')
+    
+    # Number of parallel processes 
+    parser.add_argument('--nproc',
+                        help='Number of parallel processes',
+                        required=False, type=int, default=10)
+
+    # MS Selection 
     parser.add_argument('--uv_taper_lam',
                         help='Lower baseline taper in wavelengths' +\
                              ' (default: 0, no taper)',
@@ -42,9 +60,6 @@ def parse_input():
     parser.add_argument('--field',
                         help='CASA field number of target (def=0)',
                         required=False, type=int, default=0)
-    parser.add_argument('--nproc',
-                        help='Number of parallel processes',
-                        required=False, type=int, default=10)
     parser.add_argument('--no_weights',
                         help='Ignore visibility weights (def: False)',
                         required=False, action='store_true')
@@ -62,6 +77,40 @@ def parse_input():
     args = parser.parse_args()
 
     return args
+
+
+def get_beams_from_cat(catfile, sep_arcmin, filter_isl, outdir='.'):
+    """
+    Check that catfile exists, do pre-filtering steps if 
+    desired, then create beamlist
+
+    Write filtered catalog out as {catfile base}_beams.fits 
+    """     
+    if not os.path.exists(catfile):
+        print(f"Beamfile {catfile} not found!")
+        sys.exit(0)
+
+    full_tab = Table.read(catfile)
+
+    # read filtered table
+    tab = bcats.tab_prefilter(full_tab, sep_arcmin=sep_arcmin, 
+                              filter_isl=filter_isl)
+
+    beam_list = bcats.table_to_blist(tab)
+    beam_nums = np.arange(len(beam_list), dtype=int)
+
+    cat_fname = os.path.basename(catfile)
+    outbase = cat_fname.rsplit('.fits', 1)[0]
+    outfile = f"{outdir}/{outbase}_beams.fits"
+    
+    print(f"\nFound catfile: {catfile}")
+    print(f"    with {len(full_tab)} rows\n")
+    print(f"Filtering and making {len(beam_nums)} beams\n")
+    print(f"Writing new catalog as:  {outfile}")
+    
+    tab.write(outfile)
+
+    return beam_list, beam_nums
 
 
 def get_beams(beamfile):
@@ -236,7 +285,12 @@ if __name__ == "__main__":
     ms_files, spw_list = check_msfiles(args.ms_files, args.field)
     
     # Get beam coordinates and ell em offsets
-    beam_locs, beam_nums = get_beams(args.beamfile)
+    catfile = args.catfile
+    sep_arcmin = args.cat_max_sep
+    filter_isl = args.cat_isl_filter
+    beam_locs, beam_nums = get_beams_from_cat(catfile, sep_arcmin, 
+                                              filter_isl, outdir=outdir)
+    
     pos0 = be.get_field_phasecenter(ms_files[0], args.field)
     ell_ems = np.vstack( [be.get_ell_m(pp, pos0) for pp in beam_locs] )
 
