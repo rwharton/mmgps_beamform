@@ -167,6 +167,11 @@ number of time samples, and `Nf` is the number of frequency channels.
 
 ## Run RM-Sythesis and RM-CLEAN 
 
+Now that we have prepared the data, we can run RM synthesis.  We will just be using
+[RM-Tools](https://github.com/CIRADA-Tools/RM-Tools), so that package needs to be
+installed for this script to run.  The script we are using is called `rm_proc_beams` 
+and we can see it's usage here:
+
 ```
 usage: rm_proc_beams.py [-h] [--outdir OUTDIR] --freqfile FREQFILE [--maskfile MASKFILE] [--keep_zeros] [--niter NITER]
                         [--threshold THRESHOLD] [--phimax PHIMAX] --catfile CATFILE [--use_obs_errs] [--nproc NPROC]
@@ -191,6 +196,49 @@ options:
   --use_obs_errs        Use obs errors from RM-tools in catalog (default = False)
   --nproc NPROC         Number of parallel processes to run (def=1)
 ```
+
+The `dat_files` are the `*npy` files produced by the beamforming step.  You 
+can list them individually or use some wildcard.  The `outdir` is the top of 
+the output directory for the RM-tools data products (they will be grouped into 
+sub-directories by beam). The `freqfile` is the `*npy` file of the channel 
+frequencies in MHz.  You can optionally provide a `maskfile` as a `*npy` array 
+where 1 means use the channel and 0 means mask the channel.  By default, the 
+channels with total intensity equal to zero will be ignored.  If, for some 
+unforeseeable reason, you wish to include these, use the `keep_zeros` option, 
+but note that zeros in the input to RM-Tools will cause it to fail. The options 
+`niter` and `threshold` are RM-CLEAN options that set the stopping conditions for 
+CLEAN.  The `phimax` option is the highest Faraday depth magnitude to search.
+The `catfile` option is the FITS catalog for the beams.  It will be read in and 
+a copy (appended with "RM") will be produced containing the RM, PI, SNR, and 
+associated errors for each source.  We want to use the "observed errors" from 
+RM-Tools, so we will include the `use_obs_errs` flag.  Finally, you can set the 
+number of parallel processes to run with `nproc`.  This step is *highly* pallelizable 
+and does not use much memory, so you can often get a huge speed-up by using 20 or 
+30 processes.
+
+The output will look something like this:
+
+```
+$ ls rm_spec
+
+beam00000_full  beam00002_full  beam00003_full  [...]
+Image_MSGPS_L_1184_Loop04-MFS-image-pbcor_gaul_bdsfcat_final_beams_RM.fits
+```
+
+where the results are in the FITS table and the beam directories 
+contain the outputs from RM-Synthesis and RM-CLEAN:
+
+```
+ls rm_spec/beam00000_full/
+beam00000_full_cleanFDF-plots.pdf  beam00000_full_RMclean.json             beam00000_full_spectra-plots.pdf
+beam00000_full_FDFclean.dat        beam00000_full_RMSF.dat                 beam00000_full.txt
+beam00000_full_FDFdirty.dat        beam00000_full_RMSF-dirtyFDF-plots.pdf  beam00000_full_weight.dat
+beam00000_full_FDFmodel.dat        beam00000_full_RMsynth.dat
+beam00000_full_RMclean.dat         beam00000_full_RMsynth.json
+```
+
+
+
 
 ## Make Pretty Plots 
 
