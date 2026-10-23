@@ -1,6 +1,10 @@
 # mmgps_beamform
-A version of ms_beamform specifically designed for MMGPS
+A visibility-domain pipeline for measuring the polarisation properties of sources in MMGPS data
 
+## 
+
+
+## Run beamformer to extract IQUV spectra
 
 ```
 usage: run_beamform.py [-h] --catfile CATFILE [--cat_max_sep CAT_MAX_SEP] [--cat_isl_filter] --outbase OUTBASE
@@ -29,3 +33,7 @@ optional arguments:
   --no_flags            Ignore MS data flags (def: False)
   --use_data_col        Use DATA column (def: use CORRECTED column)
 ```
+
+## Run RM-Sythesis and RM-CLEAN 
+
+## Make Pretty Plots 
