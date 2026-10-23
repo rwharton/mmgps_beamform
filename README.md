@@ -216,6 +216,12 @@ number of parallel processes to run with `nproc`.  This step is *highly* palleli
 and does not use much memory, so you can often get a huge speed-up by using 20 or 
 30 processes.
 
+An example run would be:
+
+```
+python rm_proc_beams.py --outdir rm_spec --freqfile beams/L1184_freqs.npy --phimax 20000 --cat beams/Image_MSGPS_L_1184_Loop04-MFS-image-pbcor_gaul_bdsfcat_final_beams.fits --use_obs_errs --nproc 20 beams/beam*/*_full.npy
+```
+
 The output will look something like this:
 
 ```
@@ -238,9 +244,9 @@ beam00000_full_RMclean.dat         beam00000_full_RMsynth.json
 ```
 
 
-
-
 ## Make Pretty Plots 
+
+
 
 
 ```
@@ -267,3 +273,7 @@ options:
   --no_cutouts_select   Do NOT make cutout plots for THRESHOLD sources
   --no_rmplot           Do NOT RM image plot
 ```
+
+![alt text](example/pfrac_snr.png)
+![alt text](example/select_cutout.png)
+![alt text](example/rm_sky.png)
