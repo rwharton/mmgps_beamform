@@ -258,7 +258,7 @@ usage: rm_diagnostic_plots.py [-h] [--outdir OUTDIR] --catfile CATFILE --imfile 
                               [--outbase OUTBASE] --rm_spec_dir RM_SPEC_DIR [--bfmt BFMT] [--phi_win PHI_WIN]
                               [--imsize IMSIZE] [--no_pfrac] [--no_cutouts] [--no_cutouts_select] [--no_rmplot]
 
-Make time and spectrum plots for IQUV data in beams
+Make RM diagnostic plots
 
 options:
   -h, --help            show this help message and exit
@@ -278,9 +278,25 @@ options:
   --no_rmplot           Do NOT RM image plot
 ```
 
-The 
+We will discuss the options when we discuss each of the three plots that can be produced.
+
+Here's an example run:
+```
+python rm_diagnostic_plots.py --outdir plots --catfile rm_spec/Image_MSGPS_L_1184_Loop04-MFS-image-pbcor_gaul_bdsfcat_final_beams_RM.fits --imfile Image_MSGPS_L_1184_Loop04-MFS-image-pbcor.fits --snr_cut 10 --outbase L1184 --rm_spec_dir rm_spec --imsize 1.2
+```
+
+The plots are all put in `outdir` and are named starting with a base name `outbase`.
 
 ### Polarization Fraction vs Total Intensity 
+To get a sense for how many truly polarised sources we have, we can make a plot 
+showing the polarisation fraction as a function of the total intensity.  The total 
+intensity flux comes from the initial source catalog.  Dashed lines denote the 
+polarised intensity SNR.  The light grey points have been filtered out due to 
+the island filter.  That means that they are a fainter component on a source 
+island.  The sources marked in red have survived the filter and have met the 
+SNR threshold set by `snr_cut`.  
+
+Here's an example:
 
 ![alt text](example/pfrac_snr.png)
 
