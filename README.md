@@ -320,10 +320,21 @@ These plots are made for all sources and placed in the `all` subdirectory
 and also for the select candidates that meet the SNR threshold and placed 
 in the `select` subdirectory.
 
-If you don't want to make these plots for every single candidate, included the ``--no_cutouts`` option.  If you don't want to make them for the select candidates, use ``--no_cutouts_select``.
+If you don't want to make these plots for every single candidate, included the
+``--no_cutouts`` option.  If you don't want to make them for the select
+candidates, use ``--no_cutouts_select``.
 
 ### Preliminary RM Map 
+If we have a FITS image available (which, in MMGPS, we always will), then 
+we can plot the sources that meet our SNR threshold on the total intensity 
+image.  Here's an exmample:
 
 ![alt text](example/rm_sky.png)
+
+The size of the image is set by the `imsize` parameter (given in degrees).  The 
+peak RMs are shown in color and the colorbar range is set at plus and minus the 
+largest magnitude of RM among these sources.  Each of the sources is labelled 
+with its beam number, so you can quickly find any associated data products.  The 
+size of the marker is scaled by SNR of the source polarised intensity.
 
 If you don't want to make the plot, included the ``--no_rm_plot`` option.
