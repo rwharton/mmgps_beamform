@@ -1316,7 +1316,7 @@ def make_spec_cutouts(catfile, fits_file, rm_spec_dir,
     rpix = int( radius_arcsec / (np.abs(cdelt1) * 3600) )
 
     for jj, ii in enumerate(use_rows):
-        print(f"Cand {jj+1} / {len(use_rows)}")
+        print(f"\rCand {jj+1} / {len(use_rows)}", end="")
         cc = ccs[ii]
         if name_dict is not None:
             src_name = name_dict[ii]
@@ -1470,7 +1470,7 @@ if __name__ == "__main__":
 
     # Make pfrac plot
     if not args.no_pfrac: 
-        print("Making Pol Frac Threshold plot...\n")
+        print("\nMaking Pol Frac Threshold plot...\n")
         pfrac_outbase = f"{outdir}/{outbase}_pfrac_snr"
         _ = make_pol_frac_plot(catfile, outbase=pfrac_outbase,
                                 mark_snr=None, do_filter=True, 
@@ -1478,7 +1478,7 @@ if __name__ == "__main__":
 
     # make ALL cutouts
     if not args.no_cutouts:
-        print("Making image cutout + RM spec plots...\n")
+        print("\nMaking image cutout + RM spec plots...\n")
         all_outdir = f"{outdir}/all"
         if not os.path.exists(all_outdir):
             os.makedirs(all_outdir)
@@ -1491,7 +1491,7 @@ if __name__ == "__main__":
 
     # make SELECT cutouts
     if not args.no_cutouts_select:
-        print("Making image cutout + RM spec plots for threshold cands...\n")
+        print("\nMaking image cutout + RM spec plots for threshold cands...\n")
         top_outdir = f"{outdir}/select"
         if not os.path.exists(top_outdir):
             os.makedirs(top_outdir)
@@ -1504,7 +1504,7 @@ if __name__ == "__main__":
 
     # make plot of image with rms 
     if not args.no_rmplot:
-        print("Making RM sky plot...\n")
+        print("\nMaking RM sky plot...\n")
         im_out = f"{outdir}/{outbase}_rm_plot"
         make_plot_rms(fitsfile, catfile, use_nums=zz,
                       vrange = None, imsize=imsize, outbase=im_out,

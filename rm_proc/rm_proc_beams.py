@@ -166,7 +166,7 @@ def polarr_to_txt(outfile, freqs, Qarr, Uarr, dQ, dU):
 
 
 
-def darr_to_txt(outfile, darr, freqs):
+def darr_to_txt(outfile, darr, freqs, skip_zeros=False):
     """
     Write spectra to text file format that 
     can be passed to RMSynth1D
@@ -186,6 +186,9 @@ def darr_to_txt(outfile, darr, freqs):
         for ii, freq in enumerate(freqs):
             xx = [0, 2, 4, 1, 3, 5]
             I, Q, U, dI, dQ, dU = darr[ii, xx]
+
+            if (skip_zeros==True) and (I==0):
+                continue
             
             ostr = f"{freq:12.1f} " +\
                    f"{I:10.6f} {Q:10.6f} {U:10.6f} " +\
@@ -247,7 +250,7 @@ def run_rmclean1d(infile, niter, threshold):
 
 
 def one_rm_clean(npy_file, freq_file, mask_file=None, outdir='.', 
-                 niter=200, threshold=-2, phimax=None):
+                 niter=200, threshold=-2, phimax=None, skip_zeros=False):
     """
     Run full RM processing on one npy beam file
     """
@@ -273,7 +276,7 @@ def one_rm_clean(npy_file, freq_file, mask_file=None, outdir='.',
     else:
         xx = np.arange(len(freqs))
     dat_file = f"{bdir}/{basenm}.txt"
-    darr_to_txt(dat_file, darr[xx], freqs[xx])
+    darr_to_txt(dat_file, darr[xx], freqs[xx], skip_zeros=skip_zeros)
 
     # run rm synthesis
     ret1 = run_rmsynth1d(dat_file, phimax=phimax)
@@ -285,7 +288,8 @@ def one_rm_clean(npy_file, freq_file, mask_file=None, outdir='.',
 
 
 def multi_rm_clean(nproc, npy_files, freq_file, mask_file=None, 
-                   outdir='.', niter=200, threshold=-2, phimax=None):
+                   outdir='.', niter=200, threshold=-2, 
+                   phimax=None, skip_zeros=False):
     """
     Given a list of npy data files, run rm clean on 
     all with multiprocessing using nproc cores, 
@@ -294,7 +298,7 @@ def multi_rm_clean(nproc, npy_files, freq_file, mask_file=None,
     with closing(multiprocessing.Pool(processes=nproc)) as pool:
         results = [pool.apply_async(one_rm_clean,
                    args=(npy_file, freq_file, mask_file, outdir, 
-                         niter, threshold, phimax) )\
+                         niter, threshold, phimax, skip_zeros) )\
                          for npy_file in npy_files]
         all_beams = [p.get() for p in results]
     return
@@ -741,11 +745,13 @@ def parse_input():
                         help='Output directory (def: cwd)',
                         default='.', required=False)
     parser.add_argument('--freqfile',
-                        help='npy array of channel frequencies',
+                        help='npy array of channel frequencies in MHz',
                         required=True)
     parser.add_argument('--maskfile',
-                        help='npy array of channel mask',
+                        help='npy array of channel mask (1=use chan, 0=skip chan)',
                         required=False)
+    parser.add_argument('--keep_zeros', help='Do NOT flag zeros in spectrum (default = False)', 
+                        action='store_true')
     parser.add_argument('--niter', type=int,
                         help='Number of CLEAN iterations (def=200)',
                         default=200, required=False)
@@ -795,6 +801,11 @@ if __name__ == "__main__":
     phimax = args.phimax
     if phimax <= 0:
         phimax = None
+
+    if args.keep_zeros:
+        mask_zeros = False
+    else:
+        mask_zeros = True
         
     niter = args.niter
     threshold = args.threshold
@@ -803,7 +814,7 @@ if __name__ == "__main__":
     nproc = args.nproc
     multi_rm_clean(nproc, dat_files, freqfile, mask_file=maskfile, 
                    outdir=outdir, niter=niter, threshold=threshold, 
-                   phimax=phimax)
+                   phimax=phimax, skip_zeros=mask_zeros)
 
     catfile = args.catfile
     make_fits_catalog(catfile, outdir, use_obs=args.use_obs_errs)
