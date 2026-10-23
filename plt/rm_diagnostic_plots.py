@@ -1399,7 +1399,7 @@ def parse_input():
     """
     Parse arguments to plot_beam
     """
-    prog_desc = "Make time and spectrum plots for IQUV data in beams"
+    prog_desc = "Make RM Diagnostic Plots"
     parser = ArgumentParser(description=prog_desc)
 
     parser.add_argument('--outdir',

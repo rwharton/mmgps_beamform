@@ -278,14 +278,18 @@ options:
   --no_rmplot           Do NOT RM image plot
 ```
 
+The 
+
 ### Polarization Fraction vs Total Intensity 
 
 ![alt text](example/pfrac_snr.png)
 
 
 ### Individual Candidate Inspection
+
 ![alt text](example/select_cutout.png)
 
 
 ### Preliminary RM Map 
+
 ![alt text](example/rm_sky.png)
