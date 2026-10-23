@@ -1,12 +1,60 @@
-# mmgps_beamform
-A visibility-domain pipeline for measuring the polarisation properties of sources in MMGPS data.
+# A Beamforming Approach to RM Determination
+
+## Basic Idea
+
+These scripts are provided to enable rapid RM characterization
+using beamformed visibilities. For a given list of sky positions,
+we can apply the appropriate phase offsets and extract visibility
+averaged intensities per polarization, frequency channel, and time
+sample. By then averaging in time we get the full frequency resolution
+spectra in Stokes I, Q, U, and V.  Using the full resolution Q and U
+spectra we can then run RM synthesis to measure the Faraday spectrum
+and from this the RM and peak polarized intensity.
+
+Since beamforming is just multiplying by a phase offset and summing,
+it is much faster than standard interferometric imaging.  This speedup
+is substantial, especially for wide fields of view and large numbers
+of channels.  However, these are not mathematically equivalent, and
+Q U channel imaging (and CLEANing) will always give the more precise
+measurement of polarized flux and RM.  The beamforming approach is
+equivalent to making dirty images of each channel and then extracting
+data from pixels centered on each target position.  While this will
+not be an exact representation of the polarized sky, it is sufficient
+for quickly identifying interesting polarized sources and measuring
+their RMs.
+
+In the following, we will give a recipe for running the scripts for
+beamforming and RM synthesis to go from a CASA measurement set to
+a catalog of RMs.
+
+
+## Installation and Requirements
+
+For the beamforming, the main requirement is `casatools`, which
+is needed to read the visibilities in CASA measurement set format.
+For the RM synthesis we are using
+[RM-Tools](https://github.com/CIRADA-Tools/RM-Tools), which needs
+to be installed independently.  For MMGPS, I'm using the 
+`MMGPS_EDD_042024.simg` singularity image for `casatools` during 
+the beamforming stage.  For all else, I have locally installed 
+`RM-Tool`. 
+
 
 ## Preliminaries and Prerequisites
 
-This software is specifically tailored to processing MMGPS data, but may be applied to other data sets.  The assumed data structure is a set of CASA Measurement Sets (MS) where each spectral window has its own MS (e.g., `MSGPS_L_1184_spw004.ms`).  It also requires a source catalog in FITS format that is (mostly) a pyBDSF catalog.
+This software is specifically tailored to processing MMGPS data, but may be
+applied to other data sets.  The assumed data structure is a set of CASA
+Measurement Sets (MS) where each spectral window has its own MS (e.g.,
+`MSGPS_L_1184_spw004.ms`).  It also requires a source catalog in FITS format
+that is (mostly) a pyBDSF catalog.
+
 
 ## Run beamformer to extract IQUV spectra
 
+With a catalog and data set, we can now run the beamforming code to 
+extract the IQUV data from the measurement sets. The script we will need is
+`run_beamform.py`, which is in the `bf` folder.  If we run with `-h` we can see
+the usage:
 
 ```
 usage: run_beamform.py [-h] --catfile CATFILE [--cat_max_sep CAT_MAX_SEP] [--cat_isl_filter] --outbase OUTBASE
@@ -35,6 +83,9 @@ optional arguments:
   --no_flags            Ignore MS data flags (def: False)
   --use_data_col        Use DATA column (def: use CORRECTED column)
 ```
+
+
+
 
 ## Run RM-Sythesis and RM-CLEAN 
 
