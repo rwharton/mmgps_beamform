@@ -284,7 +284,6 @@ Here's an example run:
 ```
 python rm_diagnostic_plots.py --outdir plots --catfile rm_spec/Image_MSGPS_L_1184_Loop04-MFS-image-pbcor_gaul_bdsfcat_final_beams_RM.fits --imfile Image_MSGPS_L_1184_Loop04-MFS-image-pbcor.fits --snr_cut 10 --outbase L1184 --rm_spec_dir rm_spec --imsize 1.2
 ```
-
 The plots are all put in `outdir` and are named starting with a base name `outbase`.
 
 ### Polarization Fraction vs Total Intensity 
@@ -300,12 +299,31 @@ Here's an example:
 
 ![alt text](example/pfrac_snr.png)
 
+If you don't want to make the plot, included the ``--no_pfac`` option.
+
 
 ### Individual Candidate Inspection
+Since this whole technique is approximate and susceptible to sidelobes and 
+such, it can be very useful to examine the data products produced for 
+each source. This summary plot for each source looks like this:
 
 ![alt text](example/select_cutout.png)
 
+and includes a cutout of the total intensity map in the top left, the 
+full RM range of the Faraday spectrum (top right), a zoomed in view 
+around the peak of the Faraday spectrum (bottom right), and the 
+QU spectrum (bottom left).  The size of the zoomed in version of the 
+Faraday spectrum is set by the `phi_win` parameter and is given in 
+terms of the FHWM of the RMSF.  By default we show `10 * RMSF FWHM`.
+
+These plots are made for all sources and placed in the `all` subdirectory 
+and also for the select candidates that meet the SNR threshold and placed 
+in the `select` subdirectory.
+
+If you don't want to make these plots for every single candidate, included the ``--no_cutouts`` option.  If you don't want to make them for the select candidates, use ``--no_cutouts_select``.
 
 ### Preliminary RM Map 
 
 ![alt text](example/rm_sky.png)
+
+If you don't want to make the plot, included the ``--no_rm_plot`` option.
