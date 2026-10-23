@@ -84,6 +84,80 @@ optional arguments:
   --use_data_col        Use DATA column (def: use CORRECTED column)
 ```
 
+where `catfile` is our FITS input catalog and `ms_files` are the input MS
+files.  One can also run a preliminary filter on the sources in the FITS
+catalog, if so desired.  Right now these include a maximum distance from
+pointing center (`cat_max_sep`) and a PyBDSF Island filter (`--cat_isl_filter`)
+which will take the brightest component on a source ``island''.  The `outbase`
+is the desired base name for all output, `outdir` is the directory where you
+want the beam data to be written (each beam will get its own directory under
+this), `uv_taper_lam` sets an inner cutoff (in wavelengths) that is a cheap way
+of downweighting the shorter baselines, `field` is the field ID of the target
+in the measuremen set, `nproc` is the number of processes to run
+simultaneously, `no_weights` ignores the visibility weights in the measurement
+set, `no_flags` ignores the flags in the measurement set, and `use_data_col`
+says that we should use the `DATA` column and not the default `CORRECTED_DATA`
+column.
+
+One note of caution is that we are using the python package `multiprocessing`
+to run the parallel processing specified by `nproc`.  This works very well, but
+if you are running a machine with OpenMP, you should set the following
+environment variable:
+
+```
+export OMP_NUM_THREADS=1
+```
+
+Here's an example of running the beamformer:
+
+```
+singularity exec MMGPS_EDD_042024.simg python ~/src/mmgps_beamform/bf/run_beamform.py --catfile cats/Image_MSGPS_L_1184_Loop04-MFS-image-pbcor_gaul_bdsfcat_final.fits --outbase L1184 --outdir beams --nproc 10 --uv_taper_lam 2800 selfcal_data/MSGPS_L_1184_spw0*ms
+```
+
+When running, you will see something like this in the output directory:
+
+```
+> ls beams/
+beam00000  beam00001  beam00002  beam00003  beam00004  beam00005
+beam00006  beam00007  spw00_tt_step000.npy  test_20260708T135254.log
+```
+
+There are folders for each beam (containing the data), a numpy file recording
+sample times, and a log file.  Looking inside one of the beam folders, you will
+see that the spectral windows are each being processed separately.
+
+```
+> ls beam00000
+spw00_beam00000_step000.npy  spw01_beam00000_step000.npy
+spw02_beam00000_step000.npy  spw03_beam00000_step000.npy
+```
+
+These are intermediate data products and will be combined into one file at the
+end.  All beams are being processed at the same time and each spw is processed
+sequentially.  For me, each spw took about 40 seconds each, and total
+processing was about 10 minutes.  More beams will take longer, of course, but
+not by a ton.  The slowest part of the process is just reading the measurement
+set files and all the beams are read at the same time.
+
+Now that processing is done, let's take a look to see what was produced.  In
+the output directory we now have:
+
+```
+> ls
+beam00000  beam00001  beam00002  beam00003  beam00004  beam00005
+beam00006  beam00007  test_20260708T135254.log  test_freqs.npy  times
+```
+
+We get a log file, the beam data folders, and a `npy` file containing each of
+the channel frequencies of the full band (ie, combining all the spectral
+windows) in Hz.  The `times` folder contains the time stamps for each time
+sample, which we won't really need.
+
+Each of the beam folders now just contains one spw-combined data file.  For
+example in beam0 we find the file `test_beam00000_full.npy`, where `test` is
+the output base we gave.  The data files are just numpy arrays with shape `(4,
+Nt, Nf)` where 4 is the number of stokes parameters (I, Q, U, V), `Nt` is the
+number of time samples, and `Nf` is the number of frequency channels.
 
 
 
