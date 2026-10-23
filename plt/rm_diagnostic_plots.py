@@ -24,6 +24,36 @@ from scipy.special import ndtri_exp, log_ndtr
 
 
 #########################
+###  WRITE FINAL CAT  ###
+#########################
+
+def write_filtered_cat(outdir, catfile, xx):
+    """
+    Write out rows `xx` from `catfile` to `outfile`
+    """
+    # Read catfile
+    tab = Table.read(catfile)
+
+    # Only take selected rows
+    out_tab = tab[xx]
+
+    # Add beam column
+    out_tab.add_column(xx, name='Beam')
+
+    # Write to outfile
+    cat_fname = os.path.basename(catfile)
+    cat_base = cat_fname.rsplit('.fits')[0]
+    outfile = f"{outdir}/{cat_base}_filter.fits"
+
+    if os.path.exists(outfile):
+        print(f"{outfile} already exists!")
+    else:
+        out_tab.write(outfile) 
+    
+    return
+
+
+#########################
 ###  ROC CURVE STUFF  ###
 #########################
 
@@ -1430,6 +1460,9 @@ def parse_input():
     parser.add_argument('--imsize', type=float,
                         help='Size of RM sky plot in degrees (def:1.5)',
                         default=1.2, required=False)
+    parser.add_argument('--write_cat',
+                    help='Write out catalog of filtered sources above threshold',
+                    required=False, action='store_true')
     parser.add_argument('--no_pfrac',
                     help='Do NOT make pol frac plot',
                     required=False, action='store_true')
@@ -1467,6 +1500,10 @@ if __name__ == "__main__":
 
     # Filter 
     _, zz = get_filter_rows(catfile, do_filter=True, snr_min=snr_min)
+    
+    # Write cat if desired
+    if args.write_cat:
+        write_filtered_cat(outdir, catfile, zz)
 
     # Make pfrac plot
     if not args.no_pfrac: 
