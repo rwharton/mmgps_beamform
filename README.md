@@ -246,8 +246,12 @@ beam00000_full_RMclean.dat         beam00000_full_RMsynth.json
 
 ## Make Pretty Plots 
 
+After running the RM-Tools processes, we now have the Faraday spectrum for
+every source.  But not all of these will be polarised.  In order to asses the
+polarisation properties of all our sources and make cuts to find the actually
+polarised sources, we have a script to make a few diagnostic plots.
 
-
+Running with `-h` to see the options we have:
 
 ```
 usage: rm_diagnostic_plots.py [-h] [--outdir OUTDIR] --catfile CATFILE --imfile IMFILE [--snr_cut SNR_CUT]
@@ -274,6 +278,14 @@ options:
   --no_rmplot           Do NOT RM image plot
 ```
 
+### Polarization Fraction vs Total Intensity 
+
 ![alt text](example/pfrac_snr.png)
+
+
+### Individual Candidate Inspection
 ![alt text](example/select_cutout.png)
+
+
+### Preliminary RM Map 
 ![alt text](example/rm_sky.png)
