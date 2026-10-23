@@ -118,13 +118,15 @@ When running, you will see something like this in the output directory:
 
 ```
 > ls beams/
-beam00000  beam00001  beam00002  beam00003  beam00004  beam00005
-beam00006  beam00007  spw00_tt_step000.npy  test_20260708T135254.log
+beam00000  beam00001  ...  beam[N]
+L1184_20261021T115434.log
+Image_MSGPS_L_1184_Loop04-MFS-image-pbcor_gaul_bdsfcat_final_beams.fits
 ```
 
-There are folders for each beam (containing the data), a numpy file recording
-sample times, and a log file.  Looking inside one of the beam folders, you will
-see that the spectral windows are each being processed separately.
+There are folders for each beam (containing the data), a copy of the catalog 
+(with optional filters applied) where each beam number corresponds to the 
+row in the FITS table, and a log file.  Looking inside one of the beam folders, 
+you will see that the spectral windows are each being processed separately.
 
 ```
 > ls beam00000
@@ -143,9 +145,11 @@ Now that processing is done, let's take a look to see what was produced.  In
 the output directory we now have:
 
 ```
-> ls
-beam00000  beam00001  beam00002  beam00003  beam00004  beam00005
-beam00006  beam00007  test_20260708T135254.log  test_freqs.npy  times
+> ls beams/
+beam00000  beam00001  ...  beam[N]
+L1184_20261021T115434.log
+Image_MSGPS_L_1184_Loop04-MFS-image-pbcor_gaul_bdsfcat_final_beams.fits
+L1184_freqs.npy
 ```
 
 We get a log file, the beam data folders, and a `npy` file containing each of
