@@ -476,7 +476,9 @@ def make_pol_frac_plot(catfile, outbase=None,
     else:
         xx = xall
 
-    noise = np.median(pi_errs[xx])
+    #noise = np.median(pi_errs[xx])
+    xnn = np.where( ~np.isnan(pi_errs[xx]) )[0]
+    noise = np.median(pi_errs[xx[xnn]])
 
     pfrac = PIs / Iflux
 
@@ -1145,9 +1147,13 @@ def add_clean_ax(fig, nrows, ncols, index,
     jsynth = f"{basename}_RMsynth.json"
     jclean = f"{basename}_RMclean.json"
 
-    phis, r_c, i_c, m_c = read_FDF(dclean, scale=1e3)
-    _   , r_d, i_d, m_d = read_FDF(ddirty, scale=1e3)
-    _   , r_m, i_m, m_m = read_FDF(dmodel, scale=1e3)
+    try:
+        phis, r_c, i_c, m_c = read_FDF(dclean, scale=1e3)
+        _   , r_d, i_d, m_d = read_FDF(ddirty, scale=1e3)
+        _   , r_m, i_m, m_m = read_FDF(dmodel, scale=1e3)
+    except:
+        print("Could not read RM-Synth / CLEAN Files!")
+        return None
 
     # Read SYNTH json file to get RMSF fwhm
     sjd = read_json(jsynth)
@@ -1157,6 +1163,9 @@ def add_clean_ax(fig, nrows, ncols, index,
     jd = read_json(jclean)
     dFDF = jd['dFDFcorMAD'] * 1e3
     phi_pk = jd['phiPeakPIfit_rm2']
+
+    if np.isnan(phi_pk):
+        phi_pk = phis[np.argmax(m_c)]
 
     ax.plot(phis, m_c, lw=1., c='k', label="CLEAN")
     ax.plot(phis, m_d, lw=1, c='k', alpha=0.2, label="Dirty")
@@ -1406,7 +1415,9 @@ def make_spec_cutouts(catfile, fits_file, rm_spec_dir,
 
         # add rm clean spec
         ax_clean = add_clean_ax(fig, 2, 2, 2, basename, snr=snr)
-
+        if ax_clean is None:
+            print("...no JSON files, skipping")
+            continue 
 
         # add qu plot
         ax_qu = add_QU_ax(fig, 2, 2, 3, basename)

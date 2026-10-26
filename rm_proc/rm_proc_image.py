@@ -12,28 +12,8 @@ import sys
 from matplotlib.ticker import AutoMinorLocator, MultipleLocator
 import json
 from argparse import ArgumentParser
-from astropy.table import Table
 import multiprocessing
 from contextlib import closing
-
-def blist_to_ccs(blist_file):
-    """
-    convert beam file to ccs
-    """
-    ras = []
-    decs = []
-    blist = np.load(blist_file)
-    for ii, col in enumerate(blist):
-        ra_str = col[1]
-        dec_str = col[2]
-        dec_str = ':'.join(dec_str.split('.', 2))
-        ras.append(ra_str)
-        decs.append(dec_str)
-
-    ccs = SkyCoord(ras, decs, unit=(u.hourangle, u.deg))
-
-    return ccs
-
 
 def running_median(dd, nwin=30):
     """
@@ -196,19 +176,18 @@ def polarr_to_txt(outfile, freqs, Qarr, Uarr, dQ, dU):
     return
 
 
-
-def darr_to_txt(outfile, darr, freqs):
+def darr_to_txt(outfile, darr, freqs, skip_zeros=False):
     """
-    Write spectra to text file format that 
+    Write spectra to text file format that
     can be passed to RMSynth1D
 
-    'RMsynth1D expects the input to be the 
-     form of an ASCII text file, with 7 
-     columns: frequency (in Hz), Stokes I, 
-     Stokes Q, Stokes U, error in I, error in Q, 
-     error in U. Each row is a single channel. 
+    'RMsynth1D expects the input to be the
+     form of an ASCII text file, with 7
+     columns: frequency (in Hz), Stokes I,
+     Stokes Q, Stokes U, error in I, error in Q,
+     error in U. Each row is a single channel.
      No header is expected.'
-    
+
     Can also provide 5 columns and skip I
 
     Can also mask with NaNs
@@ -217,7 +196,10 @@ def darr_to_txt(outfile, darr, freqs):
         for ii, freq in enumerate(freqs):
             xx = [0, 2, 4, 1, 3, 5]
             I, Q, U, dI, dQ, dU = darr[ii, xx]
-            
+
+            if (skip_zeros==True) and (I==0):
+                continue
+
             ostr = f"{freq:12.1f} " +\
                    f"{I:10.6f} {Q:10.6f} {U:10.6f} " +\
                    f"{dI:10.6f} {dQ:10.6f} {dU:10.6f} \n"
@@ -277,48 +259,8 @@ def run_rmclean1d(infile, niter, threshold):
     return ret.returncode 
 
 
-
-def rm_clean_many(npy_files, freq_file, mask_file=None, outdir='.', 
-                  niter=200, threshold=-2, phimax=None):
-    """
-    Given a list of npy data files, run rm clean on 
-    all and output to individual directories
-    """
-    for npy_file in npy_files:
-        fname = npy_file.split('/')[-1]
-        basenm = fname.split('.npy')[0]
-        
-        # directory where clean data will go
-        bdir = f"{outdir}/{basenm}"
-        if not os.path.exists(bdir):
-            os.mkdir(bdir)
-        else:
-            print(f"{bdir} already exists!  skipping")
-            continue
-
-        # read in npy data and write to text 
-        # file for rm synthesis and clean
-        freqs = np.load(freq_file)
-        darr = get_bdat(npy_file)   
-        if mask_file is not None:
-            mask = np.load(mask_file)
-            xx = np.where( mask )[0]
-        else:
-            xx = np.arange(len(freqs))
-        dat_file = f"{bdir}/{basenm}.txt"
-        darr_to_txt(dat_file, darr[xx], freqs[xx])
-
-        # run rm synthesis
-        ret1 = run_rmsynth1d(dat_file, phimax=phimax)
-        
-        # run rm clean
-        ret2 = run_rmclean1d(dat_file, niter, threshold)
-    
-    return
-
-
 def one_cat_rm_clean(ii, I_row, QU_row, mask_file=None, outdir='.',
-                     niter=200, threshold=-2, phimax=None):
+                     niter=200, threshold=-2, phimax=None, skip_zeros=False):
     """
     Given a Stokes I source catalog row and QU catalog row, 
     run rm clean and output to individual directory
@@ -349,6 +291,7 @@ def one_cat_rm_clean(ii, I_row, QU_row, mask_file=None, outdir='.',
         xx = np.arange(len(freqs))
     dat_file = f"{bdir}/{basenm}.txt"
     darr_to_txt(dat_file, darr[xx], freqs[xx])
+    darr_to_txt(dat_file, darr[xx], freqs[xx], skip_zeros=skip_zeros)
 
     # run rm synthesis
     try:
@@ -366,7 +309,8 @@ def one_cat_rm_clean(ii, I_row, QU_row, mask_file=None, outdir='.',
 
 
 def multi_cat_rm_clean(nproc, I_tab, QU_tab, mask_file=None,
-                       outdir='.', niter=200, threshold=-2, phimax=None):
+                       outdir='.', niter=200, threshold=-2, 
+                       phimax=None, skip_zeros=False):
     """
     Given a Stokes I source catalog and QU catalog, 
     run rm clean on all rows and output to individual 
@@ -378,57 +322,10 @@ def multi_cat_rm_clean(nproc, I_tab, QU_tab, mask_file=None,
     with closing(multiprocessing.Pool(processes=nproc)) as pool:
         results = [pool.apply_async(one_cat_rm_clean,
                    args=(ii, I_tab[ii], QU_tab[ii], mask_file, outdir,
-                         niter, threshold, phimax) ) for ii in rows]
+                         niter, threshold, phimax, skip_zeros) ) for ii in rows]
         all_beams = [p.get() for p in results]
     return
 
-
-def cat_rm_clean_many(I_tab, QU_tab, mask_file=None, outdir='.', 
-                      niter=200, threshold=-2, phimax=None):
-    """
-    Given a Stokes I source catalog and QU catalog, 
-    run rm clean on all rows and output to individual 
-    directories
-
-    I_tab and QU_tab are Tables
-    """
-    N = len(I_tab)
-    for ii in range(N):
-        I_row  = I_tab[ii]
-        QU_row = QU_tab[ii]
-
-        basenm = f"beam{ii:05d}" 
-        # directory where clean data will go
-        bdir = f"{outdir}/{basenm}"
-        if not os.path.exists(bdir):
-            os.mkdir(bdir)
-        else:
-            print(f"{bdir} already exists!  skipping")
-            continue
-
-        # read in npy data and write to text 
-        # file for rm synthesis and clean
-        freqs, darr, flag = get_cat_dat(I_row, QU_row)
-        print(f"{flag=}")
-        if flag:
-            print(f"Data row {ii} all flagged, skipping")
-            continue  
-
-        if mask_file is not None:
-            mask = np.load(mask_file)
-            xx = np.where( mask )[0]
-        else:
-            xx = np.arange(len(freqs))
-        dat_file = f"{bdir}/{basenm}.txt"
-        darr_to_txt(dat_file, darr[xx], freqs[xx])
-
-        # run rm synthesis
-        ret1 = run_rmsynth1d(dat_file, phimax=phimax)
-        
-        # run rm clean
-        ret2 = run_rmclean1d(dat_file, niter, threshold)
-    
-    return
 
 def read_FDF(datfile):
     """
@@ -509,50 +406,6 @@ def make_clean_plot(datfile, rm=None, show_ri=False, xlim=None,
     else:
         plt.show()
 
-    return
-
-
-def make_psr_rm_plots(bnums, bdir, nbeams, 
-                      psr_names, psr_nums, psr_rms):
-    """
-    Make plots for pulsars
-    """
-    for bnum in bnums:
-        bpsr = (bnum // nbeams) * nbeams
-        print(bpsr)
-        xx = np.where( psr_nums == bpsr)[0]
-        print(xx)
-        if len(xx) == 0:
-            continue
-        pname = psr_names[xx[0]]
-        prm = psr_rms[xx[0]]
-    
-        #bname = f"beam{bnum:03d}_full_split"
-        bname = f"beam{bnum:03d}_full_split"
-        datfile = f"{bdir}/{bname}/{bname}_FDFclean.dat"
-        print(datfile)
-   
-        outfile = f"{pname}_beam{bnum:03d}.png"
-        xlim = (-7e4, 7e4)
-        make_clean_plot(datfile, rm=prm, show_ri=False, xlim=xlim,
-                        title=pname, outfile=outfile)
-        
-    return
-
-
-def make_rm_plots(bnums, bdir, xlim=(-1e4, 1e4)):
-    """
-    Make rm plots
-    """
-    for bnum in bnums:
-        bname = f"beam{bnum:03d}_full"
-        datfile = f"{bdir}/{bname}/{bname}_FDFclean.dat"
-        print(datfile)
-   
-        outfile = f"beam{bnum:03d}_rm_clean.png"
-        make_clean_plot(datfile, rm=None, show_ri=False, xlim=xlim,
-                        title=None, outfile=outfile)
-        
     return
 
 
@@ -748,146 +601,6 @@ def get_rm_idx(rm_txt, snr_min=-1):
     
 
 
-def plot_rms(infile, rm_txt, cc0, rm0=0, vmin=None, vmax=None, 
-             cattype='blist', snr_min=-1, frame='fk5', offset=True):
-    """
-    Make a plot using coords from cat_fits and 
-    rm values from rm_txt centered on cc0
-    """
-    if cattype == 'blist':
-        cc = blist_to_ccs(infile)
-    else:
-        tab = Table.read(infile)
-        cc = SkyCoord(tab["RA"], tab["DEC"])
-
-    rdat = np.loadtxt(rm_txt)
-    bnums = rdat[:, 0].astype('int')
-    rms = rdat[:, 1]
-    pflux = rdat[:, 3]
-    snrs = rdat[:, 5]
-    xx = np.where( snrs > snr_min )[0]
-
-    if offset:
-        if frame == 'fk5':
-            dra = (cc.fk5.ra - cc0.fk5.ra) * np.cos(cc0.fk5.dec)
-            ddec = (cc.fk5.dec - cc0.fk5.dec)
-
-            dx = dra.arcmin
-            dy = ddec.arcmin
-
-        else:
-            dlon = (cc.galactic.l - cc0.galactic.l) * np.cos(cc0.galactic.b)
-            dlat = (cc.galactic.b - cc0.galactic.b)
-        
-            dx = dlon.arcmin
-            dy = dlat.arcmin
-
-    else:
-        if frame == 'fk5':
-            dx = cc.fk5.ra
-            dy = cc.fk5.dec
-
-        else:
-            dx = cc.galactic.l.deg
-            dy = cc.galactic.b.deg
-
-            #yy = np.where( dx > 180 )[0]
-            #print(yy)
-            #if len(yy):
-            #    dx[yy] = dx[yy] - 360 
-            #    print(dx)
-        
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
-
-    ax.set_aspect('equal')
-    #ax.plot(dx, dy, marker='o', ls='')
-
-    print(np.mean(rms))
-    cax = ax.scatter(dx[xx], dy[xx], marker='o', c=rms[xx]-rm0, cmap='coolwarm', 
-                     s=3 * (snrs[xx]), edgecolor='k', lw=0.5,
-                     vmin=vmin, vmax=vmax)
-    cbar = plt.colorbar(cax, shrink=0.95, extend='both')
-    cbar.ax.set_ylabel('${\\rm RM}~({\\rm rad~m}^{-2})$', fontsize=12)
-
-    xlim = ax.get_xlim()
-    ax.set_xlim( xlim[1], xlim[0])
-   
-    if frame == 'fk5': 
-        if offset:
-            ax.set_xlabel("RA Offset (arcmin)", fontsize=14)
-            ax.set_ylabel("DEC Offset (arcmin)", fontsize=14)
-        else:
-            ax.set_xlabel("RA (deg)", fontsize=14)
-            ax.set_ylabel("DEC (deg)", fontsize=14)
-    else:
-        if offset:
-            ax.set_xlabel("Gal Lon Offset (arcmin)", fontsize=14)
-            ax.set_ylabel("Gal Lat Offset (arcmin)", fontsize=14)
-        else:
-            ax.set_xlabel("Gal Lon (deg)", fontsize=14)
-            ax.set_ylabel("Gal Lat (deg)", fontsize=14)
-
-    #ax.plot(0, 0, marker='x', c='r')
-
-    plt.show()
-    return
-    
-
-
-def plot_frac_pol(infile, rm_txt, cc0, vmin=None, vmax=None, 
-                  snr_min=-1, frame='fk5'):
-    """
-    Make a plot using coords from cat_fits and 
-    rm values from rm_txt centered on cc0
-    """
-    tab = Table.read(infile)
-    cc = SkyCoord(tab["RA"], tab["DEC"])
-    fluxes = tab['Total_flux'] * 1e3
-
-    rdat = np.loadtxt(rm_txt)
-    bnums = rdat[:, 0].astype('int')
-    rms = rdat[:, 1]
-    pflux = rdat[:, 3]
-    snrs = rdat[:, 5]
-    pfrac = pflux / fluxes
-    xx = np.where( snrs > snr_min )[0]
-
-    if frame == 'fk5':
-        dx = cc.fk5.ra.deg
-        dy = cc.fk5.dec.deg
-
-    else:
-        dx = cc.galactic.l.deg
-        dy = cc.galactic.b.deg
-
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
-
-    ax.set_aspect('equal')
-    #ax.plot(dx, dy, marker='o', ls='')
-
-    cax = ax.scatter(dx[xx], dy[xx], marker='o', c=pfrac[xx], cmap='inferno', 
-                     s=3 * (snrs[xx]), edgecolor='k', lw=0.5,  
-                     norm=matplotlib.colors.Normalize(vmin=vmin, vmax=vmax))
-    cbar = plt.colorbar(cax, shrink=0.95)
-    cbar.ax.set_ylabel('Lin Pol Frac', fontsize=12)
-
-    xlim = ax.get_xlim()
-    ax.set_xlim( xlim[1], xlim[0])
-   
-    if frame == 'fk5': 
-       ax.set_xlabel("RA (deg)", fontsize=14)
-       ax.set_ylabel("DEC (deg)", fontsize=14)
-    else:
-       ax.set_xlabel("Gal Lon (deg)", fontsize=14)
-       ax.set_ylabel("Gal Lat (deg)", fontsize=14)
-
-    #ax.plot(0, 0, marker='x', c='r')
-    plt.show()
-    return
-
-
 def parse_input():
     """
     Parse arguments to Image cat RM synthesis
@@ -907,6 +620,9 @@ def parse_input():
     parser.add_argument('--maskfile',
                         help='npy array of channel mask',
                         required=False)
+    parser.add_argument('--keep_zeros', 
+                        help='Do NOT flag zeros in spectrum (default = False)',
+                        action='store_true')
     parser.add_argument('--niter', type=int,
                         help='Number of CLEAN iterations (def=200)',
                         default=200, required=False)
@@ -942,14 +658,19 @@ if __name__ == "__main__":
             print(f"Mask file not found: {maskfile}")
             sys.exit(0)
 
+    # Make output directory if needed
     outdir = args.outdir
     if not os.path.exists(outdir):
-        print(f"Outdir not found: {outdir}")
-        sys.exit(0)
+        os.makedirs(outdir)
 
     phimax = args.phimax
     if phimax <= 0:
         phimax = None
+    
+    if args.keep_zeros:
+        mask_zeros = False
+    else:
+        mask_zeros = True
         
     niter = args.niter
     threshold = args.threshold
@@ -964,14 +685,12 @@ if __name__ == "__main__":
         print(f"len(QUcat) = {len(QU_tab)}")
         sys.exit(0)
     
-    #cat_rm_clean_many(I_tab, QU_tab, mask_file=maskfile, 
-    #                  outdir=outdir, niter=niter, 
-    #                  threshold=threshold, phimax=phimax)
 
     nproc = args.nproc
     multi_cat_rm_clean(nproc, I_tab, QU_tab, mask_file=maskfile,
                        outdir=outdir, niter=niter,
-                       threshold=threshold, phimax=phimax)
+                       threshold=threshold, phimax=phimax, 
+                       skip_zeros=mask_zeros)
 
     if catbase is not None: 
         catfile = f"{outdir}/{catbase}.txt"
